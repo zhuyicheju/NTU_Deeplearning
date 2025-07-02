@@ -29,6 +29,7 @@ config = {
     'n_epochs': 5000,     # Number of epochs.
     'batch_size': 256,
     'learning_rate': 1e-5,
+    'weight_decay': 1e-5,
     'early_stop': 600,    # If model has not improved for this many consecutive epochs, stop training.
     'save_path': './models/model.ckpt'  # Your model will be saved here.
 }
@@ -59,9 +60,9 @@ class My_Model(nn.Module):
         super(My_Model, self).__init__()
         # TODO: modify model's structure, be aware of dimensions.
         self.layers = nn.Sequential(
-            nn.Linear(input_dim, 16),
+            nn.Linear(input_dim, 128),
             nn.ReLU(),
-            nn.Linear(16, 8),
+            nn.Linear(128, 8),
             nn.ReLU(),
             nn.Linear(8, 1)
         )
@@ -88,10 +89,7 @@ def select_feat(train_data, valid_data, test_data, select_all=True):
 def trainer(train_loader, valid_loader, model, config, device):
     criterion = nn.MSELoss(reduction='mean')  # Define your loss function, do not modify this.
 
-    # Define your optimization algorithm.
-    # TODO: Please check https://pytorch.org/docs/stable/optim.html to get more available algorithms.
-    # TODO: L2 regularization (optimizer(weight decay...) or implement by your self).
-    optimizer = torch.optim.SGD(model.parameters(), lr=config['learning_rate'], momentum=0.7)
+    optimizer = torch.optim.SGD(model.parameters(), lr=config['learning_rate'], momentum=0.7, weight_decay=config['weight_decay'])
     writer = SummaryWriter()  # Writer of tensoboard.
 
     if not os.path.isdir('./models'):
