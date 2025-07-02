@@ -18,6 +18,9 @@ from torch.utils.data import Dataset, DataLoader, random_split
 # For plotting learning curve
 from torch.utils.tensorboard import SummaryWriter
 
+import warnings
+warnings.filterwarnings("ignore", message="The NumPy module was reloaded")
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 config = {
     'seed': 5201314,      # Your seed number, you can pick your lucky number. :)
@@ -172,4 +175,58 @@ def predict(test_loader, model, device):
             preds.append(pred.detach().cpu())
     preds = torch.cat(preds, dim=0).numpy()
     return preds
+
+# Set seed for reproducibility
+same_seed(config['seed'])
+
+def embedding_state(data):
+    state_indices_np = np.argmax(data[:, :34], axis=1)
+    return state_indices_np.reshape(-1, 1)
+
+
+# train_data size: 3009 x 89 (35 states + 18 features x 3 days)
+# test_data size: 997 x 88 (without last day's positive rate)
+train_data, test_data = pd.read_csv('./covid_train.csv').values[:, 1:], pd.read_csv('./covid_test.csv').values[:, 1:]
+
+train_data = np.concatenate((embedding_state(train_data), train_data[:,34:]), axis=1)
+test_data = np.concatenate((embedding_state(test_data), test_data[:,34:]), axis=1)
+
+train_data, valid_data = train_valid_split(train_data, config['valid_ratio'], config['seed'])
+
+# Print out the data size.
+print(f"""train_data size: {train_data.shape} 
+valid_data size: {valid_data.shape} 
+test_data size: {test_data.shape}""")
+
+# Select features
+x_train, x_valid, x_test, y_train, y_valid = select_feat(train_data, valid_data, test_data, config['select_all'])
+
+# Print out the number of features.
+print(f'number of features: {x_train.shape[1]}')
+
+train_dataset, valid_dataset, test_dataset = COVID19Dataset(x_train, y_train), \
+                                            COVID19Dataset(x_valid, y_valid), \
+                                            COVID19Dataset(x_test)
+
+# Pytorch data loader loads pytorch dataset into batches.
+train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True)
+valid_loader = DataLoader(valid_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True)
+test_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, pin_memory=True)
+
+model = My_Model(input_dim=x_train.shape[1]).to(device) # put your model and data on the same computation device.
+trainer(train_loader, valid_loader, model, config, device)
+
+def save_pred(preds, file):
+    ''' Save predictions to specified file '''
+    with open(file, 'w') as fp:
+        writer = csv.writer(fp)
+        writer.writerow(['id', 'tested_positive'])
+        for i, p in enumerate(preds):
+            writer.writerow([i, p])
+
+model = My_Model(input_dim=x_train.shape[1]).to(device)
+model.load_state_dict(torch.load(config['save_path']))
+preds = predict(test_loader, model, device)
+save_pred(preds, 'pred.csv')
+
 
